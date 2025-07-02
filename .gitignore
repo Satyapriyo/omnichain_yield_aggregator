@@ -1,0 +1,35 @@
+node_modules
+.env
+coverage
+coverage.json
+typechain
+typechain-types
+
+# Solana
+target
+target/debug
+target/sbf-solana-solana
+buffer.json
+.anchor
+
+frontend/node_modules
+frontend/.env
+frontend/.env.local
+frontend/.next
+
+# Hardhat files
+cache
+artifacts
+
+# LayerZero specific files
+.layerzero
+
+# foundry test compilation files
+out
+
+# pnpm
+pnpm-error.log
+
+# Editor and OS files
+.DS_Store
+.idea
