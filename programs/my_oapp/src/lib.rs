@@ -14,7 +14,6 @@ use state::*;
 use yield_aggregator::instructions::{
     AddProtocol as YieldAddProtocol, AddProtocolParams,
     DepositForYield as YieldDepositForYield, DepositForYieldParams,
-    WithdrawYield as YieldWithdrawYield, WithdrawYieldParams,
     RebalancePosition as YieldRebalancePosition, RebalancePositionParams,
     UpdateYieldRates as YieldUpdateYieldRates, UpdateYieldRatesParams,
     CompoundYield as YieldCompoundYield, CompoundYieldParams,

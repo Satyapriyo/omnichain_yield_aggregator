@@ -17,10 +17,10 @@ pub struct Send<'info> {
     )]
     /// Configuration for the destination chain. Holds the peer address and any
     /// enforced messaging options.
-    pub peer: Account<'info, PeerConfig>,
+    pub peer: Account<'info, OAppPeerConfig>,
     #[account(seeds = [STORE_SEED], bump = store.bump)]
     /// OApp Store PDA that signs the send instruction
-    pub store: Account<'info, Store>,
+    pub store: Account<'info, OAppStore>,
     #[account(seeds = [ENDPOINT_SEED], bump = endpoint.bump, seeds::program = ENDPOINT_ID)]
     pub endpoint: Account<'info, EndpointSettings>,
 }
@@ -40,7 +40,7 @@ impl<'info> Send<'info> {
                 .accounts
                 .peer
                 .enforced_options
-                .combine_options( &None::<Vec<u8>>, &params.options)?,
+                .combine_options(&None::<Vec<u8>>, &params.options)?,
             native_fee: params.native_fee,
             lz_token_fee: params.lz_token_fee,
         };
