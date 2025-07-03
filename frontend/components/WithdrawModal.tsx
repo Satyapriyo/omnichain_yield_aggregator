@@ -1,13 +1,13 @@
-import React, { useState } from 'react'
-import { YieldAggregatorClient } from '@/lib/yieldAggregatorClient'
-import { UserPosition } from './YieldAggregatorDashboard'
+import React, { useState } from "react";
+import { YieldAggregatorClient } from "@/lib/yieldAggregatorClient";
+import { UserPosition } from "./YieldAggregatorDashboard";
 
 interface WithdrawModalProps {
-  client: YieldAggregatorClient
-  isOpen: boolean
-  onClose: () => void
-  onSuccess: () => void
-  userPosition: UserPosition | null
+  client: YieldAggregatorClient;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+  userPosition: UserPosition | null;
 }
 
 export const WithdrawModal: React.FC<WithdrawModalProps> = ({
@@ -17,56 +17,56 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
   onSuccess,
   userPosition,
 }) => {
-  const [amount, setAmount] = useState('')
-  const [withdrawToChain, setWithdrawToChain] = useState('40168') // Default to Solana
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [amount, setAmount] = useState("");
+  const [withdrawToChain, setWithdrawToChain] = useState("40168"); // Default to Solana
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const maxWithdrawable = userPosition 
+  const maxWithdrawable = userPosition
     ? userPosition.totalDeposits + userPosition.totalYieldEarned
-    : 0
+    : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setIsLoading(true)
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
 
     try {
-      const amountNum = parseFloat(amount)
+      const amountNum = parseFloat(amount);
 
       if (isNaN(amountNum) || amountNum <= 0) {
-        throw new Error('Please enter a valid amount')
+        throw new Error("Please enter a valid amount");
       }
 
       if (amountNum > maxWithdrawable) {
-        throw new Error('Amount exceeds available balance')
+        throw new Error("Amount exceeds available balance");
       }
 
       // For demo purposes, we'll use the first available strategy
       // In a real implementation, you'd specify which strategy to withdraw from
-      const strategies = await client.getStrategies()
-      const strategy = strategies[0] // Just use first strategy for demo
-      
+      const strategies = await client.getStrategies();
+      const strategy = strategies[0]; // Just use first strategy for demo
+
       if (!strategy) {
-        throw new Error('No strategies available')
+        throw new Error("No strategies available");
       }
 
-      await client.withdraw(strategy.publicKey, amountNum)
+      await client.withdraw(strategy.publicKey, amountNum);
 
-      onSuccess()
-      onClose()
+      onSuccess();
+      onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleMaxClick = () => {
-    setAmount(maxWithdrawable.toString())
-  }
+    setAmount(maxWithdrawable.toString());
+  };
 
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -88,7 +88,9 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
           {/* Balance Info */}
           {userPosition && (
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6">
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Available Balance</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-white mb-3">
+                Available Balance
+              </h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-gray-600 dark:text-gray-300">Principal</p>
@@ -97,7 +99,9 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
                   </p>
                 </div>
                 <div>
-                  <p className="text-gray-600 dark:text-gray-300">Yield Earned</p>
+                  <p className="text-gray-600 dark:text-gray-300">
+                    Yield Earned
+                  </p>
                   <p className="font-semibold text-green-600 dark:text-green-400">
                     ${userPosition.totalYieldEarned.toLocaleString()}
                   </p>
@@ -105,7 +109,9 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
               </div>
               <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
                 <div className="flex justify-between">
-                  <span className="font-semibold text-gray-900 dark:text-white">Total Available:</span>
+                  <span className="font-semibold text-gray-900 dark:text-white">
+                    Total Available:
+                  </span>
                   <span className="font-bold text-blue-600 dark:text-blue-400">
                     ${maxWithdrawable.toLocaleString()}
                   </span>
@@ -165,7 +171,9 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
 
             {error && (
               <div className="bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-md p-3">
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  {error}
+                </p>
               </div>
             )}
 
@@ -184,7 +192,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
                 className="flex-1 btn-primary"
                 disabled={isLoading || !amount || maxWithdrawable === 0}
               >
-                {isLoading ? 'Processing...' : 'Withdraw'}
+                {isLoading ? "Processing..." : "Withdraw"}
               </button>
             </div>
           </form>
@@ -192,12 +200,13 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
           {/* Info */}
           <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900 rounded-lg">
             <p className="text-sm text-yellow-800 dark:text-yellow-200">
-              ⚠️ <strong>Important:</strong> Cross-chain withdrawals may take 5-15 minutes to complete.
-              Local Solana withdrawals are processed immediately.
+              ⚠️ <strong>Important:</strong> Cross-chain withdrawals may take
+              5-15 minutes to complete. Local Solana withdrawals are processed
+              immediately.
             </p>
           </div>
         </div>
       </div>
     </div>
-  )
-}
+  );
+};

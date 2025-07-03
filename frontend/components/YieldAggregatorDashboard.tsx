@@ -1,160 +1,165 @@
-'use client'
+"use client";
 
-import React, { useState, useEffect } from 'react'
-import { useConnection, useWallet } from '@solana/wallet-adapter-react'
-import { PublicKey } from '@solana/web3.js'
-import { YieldAggregatorClient, YieldStrategy } from '@/lib/yieldAggregatorClient'
-import { ProtocolCard } from './ProtocolCard'
-import { UserPositionCard } from './UserPositionCard'
-import { DepositModal } from './DepositModal'
-import { WithdrawModal } from './WithdrawModal'
-import { RebalanceModal } from './RebalanceModal'
-import { AdminPanel } from './AdminPanel'
+import React, { useState, useEffect } from "react";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { PublicKey } from "@solana/web3.js";
+import {
+  YieldAggregatorClient,
+  YieldStrategy,
+} from "@/lib/yieldAggregatorClient";
+import { ProtocolCard } from "./ProtocolCard";
+import { UserPositionCard } from "./UserPositionCard";
+import { DepositModal } from "./DepositModal";
+import { WithdrawModal } from "./WithdrawModal";
+import { RebalanceModal } from "./RebalanceModal";
+import { AdminPanel } from "./AdminPanel";
 
 export interface Protocol {
-  name: string
-  chainId: number
-  currentApy: number
-  tvl: number
-  maxCapacity: number
-  riskScore: number
-  isActive: boolean
-  lastUpdate: number
+  name: string;
+  chainId: number;
+  currentApy: number;
+  tvl: number;
+  maxCapacity: number;
+  riskScore: number;
+  isActive: boolean;
+  lastUpdate: number;
 }
 
 export interface UserPosition {
-  user: string
-  totalDeposits: number
-  totalYieldEarned: number
-  positionCount: number
-  lastActivity: number
+  user: string;
+  totalDeposits: number;
+  totalYieldEarned: number;
+  positionCount: number;
+  lastActivity: number;
 }
 
 export const YieldAggregatorDashboard: React.FC = () => {
-  const { connection } = useConnection()
-  const { publicKey, connected } = useWallet()
-  const [client, setClient] = useState<YieldAggregatorClient | null>(null)
+  const { connection } = useConnection();
+  const { publicKey, connected } = useWallet();
+  const [client, setClient] = useState<YieldAggregatorClient | null>(null);
 
   // State
-  const [protocols, setProtocols] = useState<Protocol[]>([])
-  const [strategies, setStrategies] = useState<YieldStrategy[]>([])
-  const [userPosition, setUserPosition] = useState<UserPosition | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [protocols, setProtocols] = useState<Protocol[]>([]);
+  const [strategies, setStrategies] = useState<YieldStrategy[]>([]);
+  const [userPosition, setUserPosition] = useState<UserPosition | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Modal states
-  const [showDepositModal, setShowDepositModal] = useState(false)
-  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
-  const [showRebalanceModal, setShowRebalanceModal] = useState(false)
-  const [showAdminPanel, setShowAdminPanel] = useState(false)
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [showRebalanceModal, setShowRebalanceModal] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
 
   // Selected protocol for modals
-  const [selectedProtocol, setSelectedProtocol] = useState<Protocol | null>(null)
+  const [selectedProtocol, setSelectedProtocol] = useState<Protocol | null>(
+    null,
+  );
 
   // Initialize client when wallet connects
   useEffect(() => {
     if (connection) {
-      const yieldClient = new YieldAggregatorClient(connection)
-      yieldClient.setWallet(publicKey)
-      setClient(yieldClient)
+      const yieldClient = new YieldAggregatorClient(connection);
+      yieldClient.setWallet(publicKey);
+      setClient(yieldClient);
     } else {
-      setClient(null)
+      setClient(null);
     }
-  }, [connection, publicKey, connected])
+  }, [connection, publicKey, connected]);
 
   // Load data when client is available
   useEffect(() => {
     if (client) {
-      loadData()
+      loadData();
     }
-  }, [client])
+  }, [client]);
 
   const loadData = async () => {
-    if (!client) return
+    if (!client) return;
 
-    setIsLoading(true)
+    setIsLoading(true);
     try {
       // Fetch strategies from the client
-      const fetchedStrategies = await client.getStrategies()
-      setStrategies(fetchedStrategies)
+      const fetchedStrategies = await client.getStrategies();
+      setStrategies(fetchedStrategies);
 
       // Mock data for now - you can implement actual data fetching
       const mockProtocols: Protocol[] = [
         {
-          name: 'Compound',
+          name: "Compound",
           chainId: 1,
           currentApy: 850, // 8.5%
           tvl: 1500000,
           maxCapacity: 5000000,
           riskScore: 3,
           isActive: true,
-          lastUpdate: Date.now()
+          lastUpdate: Date.now(),
         },
         {
-          name: 'Aave',
+          name: "Aave",
           chainId: 1,
           currentApy: 720, // 7.2%
           tvl: 2200000,
           maxCapacity: 8000000,
           riskScore: 2,
           isActive: true,
-          lastUpdate: Date.now()
+          lastUpdate: Date.now(),
         },
         {
-          name: 'Solana Lido',
+          name: "Solana Lido",
           chainId: 40168,
           currentApy: 920, // 9.2%
           tvl: 800000,
           maxCapacity: 3000000,
           riskScore: 4,
           isActive: true,
-          lastUpdate: Date.now()
-        }
-      ]
+          lastUpdate: Date.now(),
+        },
+      ];
 
-      setProtocols(mockProtocols)
+      setProtocols(mockProtocols);
 
       // Mock user position
       const mockUserPosition: UserPosition = {
-        user: publicKey?.toString() || '',
+        user: publicKey?.toString() || "",
         totalDeposits: 5000,
         totalYieldEarned: 125,
         positionCount: 2,
-        lastActivity: Date.now()
-      }
+        lastActivity: Date.now(),
+      };
 
-      setUserPosition(mockUserPosition)
+      setUserPosition(mockUserPosition);
     } catch (error) {
-      console.error('Error loading data:', error)
+      console.error("Error loading data:", error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleDeposit = (protocol: Protocol) => {
-    setSelectedProtocol(protocol)
-    setShowDepositModal(true)
-  }
+    setSelectedProtocol(protocol);
+    setShowDepositModal(true);
+  };
 
   const handleWithdraw = () => {
-    setShowWithdrawModal(true)
-  }
+    setShowWithdrawModal(true);
+  };
 
   const handleRebalance = () => {
-    setShowRebalanceModal(true)
-  }
+    setShowRebalanceModal(true);
+  };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount)
-  }
+    }).format(amount);
+  };
 
   const formatApy = (apy: number) => {
-    return (apy / 100).toFixed(2) + '%'
-  }
+    return (apy / 100).toFixed(2) + "%";
+  };
 
   if (!connected) {
     return (
@@ -164,12 +169,13 @@ export const YieldAggregatorDashboard: React.FC = () => {
             Connect Your Wallet
           </h2>
           <p className="text-gray-600 dark:text-gray-300 mb-6">
-            Please connect your Solana wallet to access the Yield Aggregator dashboard.
+            Please connect your Solana wallet to access the Yield Aggregator
+            dashboard.
           </p>
           <div className="text-4xl mb-4">🔗</div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -190,7 +196,7 @@ export const YieldAggregatorDashboard: React.FC = () => {
           onClick={() => setShowAdminPanel(!showAdminPanel)}
           className="btn-secondary text-sm"
         >
-          {showAdminPanel ? 'Hide Admin Panel' : 'Show Admin Panel'}
+          {showAdminPanel ? "Hide Admin Panel" : "Show Admin Panel"}
         </button>
       </div>
 
@@ -210,7 +216,7 @@ export const YieldAggregatorDashboard: React.FC = () => {
             disabled={isLoading}
             className="btn-secondary"
           >
-            {isLoading ? 'Loading...' : 'Refresh'}
+            {isLoading ? "Loading..." : "Refresh"}
           </button>
         </div>
 
@@ -245,7 +251,8 @@ export const YieldAggregatorDashboard: React.FC = () => {
               No Protocols Available
             </h3>
             <p className="text-gray-600 dark:text-gray-300">
-              No yield protocols have been added yet. Check back later or contact an administrator.
+              No yield protocols have been added yet. Check back later or
+              contact an administrator.
             </p>
           </div>
         )}
@@ -279,14 +286,14 @@ export const YieldAggregatorDashboard: React.FC = () => {
           onClose={() => setShowRebalanceModal(false)}
           onRebalance={async (fromStrategy, toStrategy, amount) => {
             try {
-              await client.rebalance(fromStrategy, toStrategy, amount)
-              loadData()
+              await client.rebalance(fromStrategy, toStrategy, amount);
+              loadData();
             } catch (error) {
-              console.error('Rebalance failed:', error)
+              console.error("Rebalance failed:", error);
             }
           }}
         />
       )}
     </div>
-  )
-}
+  );
+};

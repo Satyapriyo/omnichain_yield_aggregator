@@ -1,7 +1,9 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer, Mint};
+use anchor_spl::token::{self, Token, TokenAccount, Transfer, Mint, CloseAccount, SyncNative};
+use anchor_spl::associated_token::AssociatedToken;
 use crate::yield_aggregator::{state::*, events::*, errors::*};
 use crate::{YIELD_AGGREGATOR_SEED, PROTOCOL_SEED, USER_POSITION_SEED, YIELD_VAULT_SEED};
+use oapp::endpoint_cpi::{LzAccount, LzReceiveParams};
 
 // ============================== Initialize Yield Aggregator ==============================
 
@@ -95,10 +97,10 @@ impl AddProtocol<'_> {
         protocol_info.bump = ctx.bumps.protocol_info;
 
         let yield_aggregator = &mut ctx.accounts.yield_aggregator;
-        yield_aggregator.total_protocols = yield_aggregator.total_protocols.checked_add(1).unwrap();
+        yield_aggregator.total_protocols += 1;
 
         emit!(ProtocolAdded {
-            name: params.name.clone(),
+            name: params.name,
             chain_id: params.chain_id,
             apy: params.initial_apy,
             max_capacity: params.max_capacity,
@@ -109,7 +111,160 @@ impl AddProtocol<'_> {
     }
 }
 
-// ============================== Deposit For Yield ==============================
+// ============================== Deposit SOL for Yield ==============================
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct DepositSolForYieldParams {
+    pub amount: u64,
+    pub target_protocol: String,
+    pub target_chain_id: u32,
+    pub min_apy: u64,
+}
+
+#[derive(Accounts)]
+#[instruction(params: DepositSolForYieldParams)]
+pub struct DepositSolForYield<'info> {
+    #[account(
+        init_if_needed,
+        payer = user,
+        space = 8 + UserPosition::INIT_SPACE,
+        seeds = [USER_POSITION_SEED, user.key().as_ref()],
+        bump
+    )]
+    pub user_position: Account<'info, UserPosition>,
+    #[account(
+        init_if_needed,
+        payer = user,
+        associated_token::mint = wsol_mint,
+        associated_token::authority = user,
+    )]
+    pub user_wsol_account: Account<'info, TokenAccount>,
+    #[account(
+        init_if_needed,
+        payer = user,
+        space = 8 + YieldVault::INIT_SPACE,
+        seeds = [YIELD_VAULT_SEED, wsol_mint.key().as_ref()],
+        bump
+    )]
+    pub yield_vault: Account<'info, YieldVault>,
+    #[account(
+        init_if_needed,
+        payer = user,
+        associated_token::mint = wsol_mint,
+        associated_token::authority = yield_vault,
+    )]
+    pub vault_wsol_account: Account<'info, TokenAccount>,
+    #[account(
+        seeds = [PROTOCOL_SEED, params.target_protocol.as_bytes()],
+        bump = protocol_info.bump,
+        constraint = protocol_info.is_active @ YieldAggregatorError::ProtocolInactive,
+        constraint = protocol_info.current_apy >= params.min_apy @ YieldAggregatorError::ApyTooLow
+    )]
+    pub protocol_info: Account<'info, ProtocolInfo>,
+    #[account(
+        mut,
+        seeds = [YIELD_AGGREGATOR_SEED],
+        bump = yield_aggregator.bump,
+        constraint = !yield_aggregator.emergency_paused @ YieldAggregatorError::EmergencyPaused
+    )]
+    pub yield_aggregator: Account<'info, YieldAggregator>,
+    pub wsol_mint: Account<'info, Mint>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+impl DepositSolForYield<'_> {
+    pub fn apply(ctx: &mut Context<Self>, params: &DepositSolForYieldParams) -> Result<()> {
+        require!(params.amount > 0, YieldAggregatorError::InvalidAmount);
+        require!(
+            ctx.accounts.user.lamports() >= params.amount + 10_000_000, // Keep 0.01 SOL for fees
+            YieldAggregatorError::InsufficientBalance
+        );
+
+        // Step 1: Transfer SOL to user's WSOL account
+        let transfer_sol_ix = anchor_lang::system_program::Transfer {
+            from: ctx.accounts.user.to_account_info(),
+            to: ctx.accounts.user_wsol_account.to_account_info(),
+        };
+        anchor_lang::system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                transfer_sol_ix,
+            ),
+            params.amount,
+        )?;
+
+        // Step 2: Sync WSOL account (SOL → WSOL conversion)
+        let sync_native_ix = SyncNative {
+            account: ctx.accounts.user_wsol_account.to_account_info(),
+        };
+        token::sync_native(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                sync_native_ix,
+            ),
+        )?;
+
+        // Step 3: Transfer WSOL to yield vault
+        let transfer_wsol_ix = Transfer {
+            from: ctx.accounts.user_wsol_account.to_account_info(),
+            to: ctx.accounts.vault_wsol_account.to_account_info(),
+            authority: ctx.accounts.user.to_account_info(),
+        };
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                transfer_wsol_ix,
+            ),
+            params.amount,
+        )?;
+
+        // Step 4: Update user position
+        let user_position = &mut ctx.accounts.user_position;
+        user_position.user = ctx.accounts.user.key();
+        user_position.total_deposits += params.amount;
+        user_position.position_count += 1;
+        user_position.last_activity = Clock::get()?.unix_timestamp;
+        user_position.bump = ctx.bumps.user_position;
+
+        // Step 5: Update yield vault
+        let yield_vault = &mut ctx.accounts.yield_vault;
+        yield_vault.mint = ctx.accounts.wsol_mint.key();
+        yield_vault.authority = ctx.accounts.yield_vault.key();
+        yield_vault.total_deposits += params.amount;
+        yield_vault.bump = ctx.bumps.yield_vault;
+
+        // Step 6: Update global aggregator
+        let yield_aggregator = &mut ctx.accounts.yield_aggregator;
+        yield_aggregator.total_tvl += params.amount;
+
+        // Step 7: If cross-chain, emit request event
+        if params.target_chain_id != 40168 { // 40168 is Solana's LayerZero endpoint ID
+            emit!(CrossChainDepositRequested {
+                user: ctx.accounts.user.key(),
+                amount: params.amount,
+                target_chain: params.target_chain_id,
+                target_protocol: params.target_protocol.clone(),
+                timestamp: Clock::get()?.unix_timestamp,
+            });
+        } else {
+            emit!(LocalDepositProcessed {
+                user: ctx.accounts.user.key(),
+                amount: params.amount,
+                protocol: params.target_protocol.clone(),
+                apy: ctx.accounts.protocol_info.current_apy,
+                timestamp: Clock::get()?.unix_timestamp,
+            });
+        }
+
+        Ok(())
+    }
+}
+
+// ============================== Deposit SPL Tokens for Yield ==============================
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct DepositForYieldParams {
@@ -131,77 +286,91 @@ pub struct DepositForYield<'info> {
     )]
     pub user_position: Account<'info, UserPosition>,
     #[account(
+        mut,
+        associated_token::mint = token_mint,
+        associated_token::authority = user,
+    )]
+    pub user_token_account: Account<'info, TokenAccount>,
+    #[account(
+        init_if_needed,
+        payer = user,
+        space = 8 + YieldVault::INIT_SPACE,
+        seeds = [YIELD_VAULT_SEED, token_mint.key().as_ref()],
+        bump
+    )]
+    pub yield_vault: Account<'info, YieldVault>,
+    #[account(
+        init_if_needed,
+        payer = user,
+        associated_token::mint = token_mint,
+        associated_token::authority = yield_vault,
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+    #[account(
+        seeds = [PROTOCOL_SEED, params.target_protocol.as_bytes()],
+        bump = protocol_info.bump,
+        constraint = protocol_info.is_active @ YieldAggregatorError::ProtocolInactive,
+        constraint = protocol_info.current_apy >= params.min_apy @ YieldAggregatorError::ApyTooLow
+    )]
+    pub protocol_info: Account<'info, ProtocolInfo>,
+    #[account(
+        mut,
         seeds = [YIELD_AGGREGATOR_SEED],
         bump = yield_aggregator.bump,
         constraint = !yield_aggregator.emergency_paused @ YieldAggregatorError::EmergencyPaused
     )]
     pub yield_aggregator: Account<'info, YieldAggregator>,
-    #[account(
-        seeds = [PROTOCOL_SEED, params.target_protocol.as_bytes()],
-        bump = protocol_info.bump,
-        constraint = protocol_info.is_active @ YieldAggregatorError::ProtocolInactive
-    )]
-    pub protocol_info: Account<'info, ProtocolInfo>,
-    #[account(
-        init_if_needed,
-        payer = user,
-        seeds = [YIELD_VAULT_SEED, mint.key().as_ref()],
-        bump,
-        token::mint = mint,
-        token::authority = yield_aggregator
-    )]
-    pub vault_token_account: Account<'info, TokenAccount>,
-    #[account(
-        mut,
-        token::mint = mint,
-        token::authority = user
-    )]
-    pub user_token_account: Account<'info, TokenAccount>,
-    pub mint: Account<'info, Mint>,
+    pub token_mint: Account<'info, Mint>,
     #[account(mut)]
     pub user: Signer<'info>,
     pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
 
 impl DepositForYield<'_> {
     pub fn apply(ctx: &mut Context<Self>, params: &DepositForYieldParams) -> Result<()> {
         require!(params.amount > 0, YieldAggregatorError::InvalidAmount);
-        require!(ctx.accounts.protocol_info.current_apy >= params.min_apy, YieldAggregatorError::ApyTooLow);
-        
-        let new_tvl = ctx.accounts.protocol_info.tvl.checked_add(params.amount).unwrap();
-        require!(new_tvl <= ctx.accounts.protocol_info.max_capacity, YieldAggregatorError::CapacityExceeded);
-
-        // Transfer tokens to vault
-        let transfer_ctx = CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Transfer {
-                from: ctx.accounts.user_token_account.to_account_info(),
-                to: ctx.accounts.vault_token_account.to_account_info(),
-                authority: ctx.accounts.user.to_account_info(),
-            },
+        require!(
+            ctx.accounts.user_token_account.amount >= params.amount,
+            YieldAggregatorError::InsufficientBalance
         );
-        token::transfer(transfer_ctx, params.amount)?;
+
+        // Transfer tokens to yield vault
+        let transfer_ix = Transfer {
+            from: ctx.accounts.user_token_account.to_account_info(),
+            to: ctx.accounts.vault_token_account.to_account_info(),
+            authority: ctx.accounts.user.to_account_info(),
+        };
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                transfer_ix,
+            ),
+            params.amount,
+        )?;
 
         // Update user position
         let user_position = &mut ctx.accounts.user_position;
-        if user_position.user == Pubkey::default() {
-            // New position
-            user_position.user = ctx.accounts.user.key();
-            user_position.total_deposits = params.amount;
-            user_position.total_yield_earned = 0;
-            user_position.position_count = 1;
-            user_position.last_activity = Clock::get()?.unix_timestamp;
-            user_position.bump = ctx.bumps.user_position;
-        } else {
-            // Update existing position
-            user_position.total_deposits = user_position.total_deposits.checked_add(params.amount).unwrap();
-            user_position.position_count = user_position.position_count.checked_add(1).unwrap();
-            user_position.last_activity = Clock::get()?.unix_timestamp;
-        }
+        user_position.user = ctx.accounts.user.key();
+        user_position.total_deposits += params.amount;
+        user_position.position_count += 1;
+        user_position.last_activity = Clock::get()?.unix_timestamp;
+        user_position.bump = ctx.bumps.user_position;
 
-        // If target is cross-chain, emit event for cross-chain processing
-        if params.target_chain_id != 40168 { // Not Solana devnet
+        // Update yield vault
+        let yield_vault = &mut ctx.accounts.yield_vault;
+        yield_vault.mint = ctx.accounts.token_mint.key();
+        yield_vault.authority = ctx.accounts.yield_vault.key();
+        yield_vault.total_deposits += params.amount;
+        yield_vault.bump = ctx.bumps.yield_vault;
+
+        // Update global aggregator
+        let yield_aggregator = &mut ctx.accounts.yield_aggregator;
+        yield_aggregator.total_tvl += params.amount;
+
+        // Emit appropriate event
+        if params.target_chain_id != 40168 {
             emit!(CrossChainDepositRequested {
                 user: ctx.accounts.user.key(),
                 amount: params.amount,
@@ -210,7 +379,6 @@ impl DepositForYield<'_> {
                 timestamp: Clock::get()?.unix_timestamp,
             });
         } else {
-            // Process locally on Solana
             emit!(LocalDepositProcessed {
                 user: ctx.accounts.user.key(),
                 amount: params.amount,
@@ -224,12 +392,137 @@ impl DepositForYield<'_> {
     }
 }
 
+// ============================== Withdraw SOL ==============================
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct WithdrawSolParams {
+    pub amount: u64, // 0 means withdraw all
+    pub as_native_sol: bool,
+}
+
+#[derive(Accounts)]
+pub struct WithdrawSol<'info> {
+    #[account(
+        mut,
+        seeds = [USER_POSITION_SEED, user.key().as_ref()],
+        bump = user_position.bump,
+        has_one = user @ YieldAggregatorError::Unauthorized
+    )]
+    pub user_position: Account<'info, UserPosition>,
+    #[account(
+        mut,
+        associated_token::mint = wsol_mint,
+        associated_token::authority = user,
+    )]
+    pub user_wsol_account: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        seeds = [YIELD_VAULT_SEED, wsol_mint.key().as_ref()],
+        bump = yield_vault.bump
+    )]
+    pub yield_vault: Account<'info, YieldVault>,
+    #[account(
+        mut,
+        associated_token::mint = wsol_mint,
+        associated_token::authority = yield_vault,
+    )]
+    pub vault_wsol_account: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        seeds = [YIELD_AGGREGATOR_SEED],
+        bump = yield_aggregator.bump,
+        constraint = !yield_aggregator.emergency_paused @ YieldAggregatorError::EmergencyPaused
+    )]
+    pub yield_aggregator: Account<'info, YieldAggregator>,
+    pub wsol_mint: Account<'info, Mint>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+impl WithdrawSol<'_> {
+    pub fn apply(ctx: &mut Context<Self>, params: &WithdrawSolParams) -> Result<()> {
+        let withdraw_amount = if params.amount == 0 {
+            ctx.accounts.vault_wsol_account.amount
+        } else {
+            params.amount
+        };
+
+        require!(withdraw_amount > 0, YieldAggregatorError::InvalidAmount);
+        require!(
+            ctx.accounts.vault_wsol_account.amount >= withdraw_amount,
+            YieldAggregatorError::InsufficientBalance
+        );
+
+        // Transfer WSOL from vault to user
+        let vault_seeds = &[
+            YIELD_VAULT_SEED,
+            ctx.accounts.wsol_mint.key().as_ref(),
+            &[ctx.accounts.yield_vault.bump],
+        ];
+        let signer_seeds = &[&vault_seeds[..]];
+
+        let transfer_ix = Transfer {
+            from: ctx.accounts.vault_wsol_account.to_account_info(),
+            to: ctx.accounts.user_wsol_account.to_account_info(),
+            authority: ctx.accounts.yield_vault.to_account_info(),
+        };
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                transfer_ix,
+                signer_seeds,
+            ),
+            withdraw_amount,
+        )?;
+
+        // If user wants native SOL, close the WSOL account
+        if params.as_native_sol {
+            let close_ix = CloseAccount {
+                account: ctx.accounts.user_wsol_account.to_account_info(),
+                destination: ctx.accounts.user.to_account_info(),
+                authority: ctx.accounts.user.to_account_info(),
+            };
+            token::close_account(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    close_ix,
+                ),
+            )?;
+        }
+
+        // Update user position
+        let user_position = &mut ctx.accounts.user_position;
+        user_position.total_deposits = user_position.total_deposits.saturating_sub(withdraw_amount);
+        user_position.last_activity = Clock::get()?.unix_timestamp;
+
+        // Update yield vault
+        let yield_vault = &mut ctx.accounts.yield_vault;
+        yield_vault.total_deposits = yield_vault.total_deposits.saturating_sub(withdraw_amount);
+
+        // Update global aggregator
+        let yield_aggregator = &mut ctx.accounts.yield_aggregator;
+        yield_aggregator.total_tvl = yield_aggregator.total_tvl.saturating_sub(withdraw_amount);
+
+        emit!(YieldWithdrawn {
+            user: ctx.accounts.user.key(),
+            amount: withdraw_amount,
+            target_chain: 40168, // Solana
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+
+        Ok(())
+    }
+}
+
 // ============================== Withdraw Yield ==============================
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct WithdrawYieldParams {
     pub amount: u64,
-    pub withdraw_to_chain: u32,
+    pub target_chain_id: u32,
 }
 
 #[derive(Accounts)]
@@ -242,83 +535,29 @@ pub struct WithdrawYield<'info> {
     )]
     pub user_position: Account<'info, UserPosition>,
     #[account(
+        mut,
         seeds = [YIELD_AGGREGATOR_SEED],
         bump = yield_aggregator.bump,
         constraint = !yield_aggregator.emergency_paused @ YieldAggregatorError::EmergencyPaused
     )]
     pub yield_aggregator: Account<'info, YieldAggregator>,
-    #[account(
-        mut,
-        seeds = [YIELD_VAULT_SEED, mint.key().as_ref()],
-        bump,
-        token::mint = mint,
-        token::authority = yield_aggregator
-    )]
-    pub vault_token_account: Account<'info, TokenAccount>,
-    #[account(
-        mut,
-        token::mint = mint,
-        token::authority = user
-    )]
-    pub user_token_account: Account<'info, TokenAccount>,
-    pub mint: Account<'info, Mint>,
     #[account(mut)]
     pub user: Signer<'info>,
-    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }
 
 impl WithdrawYield<'_> {
     pub fn apply(ctx: &mut Context<Self>, params: &WithdrawYieldParams) -> Result<()> {
-        let user_position = &mut ctx.accounts.user_position;
-        let available_amount = user_position.total_deposits
-            .checked_add(user_position.total_yield_earned)
-            .unwrap();
-        
-        require!(params.amount <= available_amount, YieldAggregatorError::InsufficientBalance);
-
-        if params.withdraw_to_chain == 40168 {
-            // Withdraw locally on Solana
-            let seeds = &[
-                YIELD_AGGREGATOR_SEED,
-                &[ctx.accounts.yield_aggregator.bump],
-            ];
-            let signer = &[&seeds[..]];
-
-            let transfer_ctx = CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.vault_token_account.to_account_info(),
-                    to: ctx.accounts.user_token_account.to_account_info(),
-                    authority: ctx.accounts.yield_aggregator.to_account_info(),
-                },
-                signer,
-            );
-            token::transfer(transfer_ctx, params.amount)?;
-        } else {
-            // Emit event for cross-chain withdrawal
-            emit!(CrossChainWithdrawRequested {
-                user: ctx.accounts.user.key(),
-                amount: params.amount,
-                target_chain: params.withdraw_to_chain,
-                timestamp: Clock::get()?.unix_timestamp,
-            });
-        }
+        require!(params.amount > 0, YieldAggregatorError::InvalidAmount);
 
         // Update user position
-        if params.amount <= user_position.total_yield_earned {
-            user_position.total_yield_earned = user_position.total_yield_earned.checked_sub(params.amount).unwrap();
-        } else {
-            let remaining = params.amount.checked_sub(user_position.total_yield_earned).unwrap();
-            user_position.total_yield_earned = 0;
-            user_position.total_deposits = user_position.total_deposits.checked_sub(remaining).unwrap();
-        }
-
+        let user_position = &mut ctx.accounts.user_position;
         user_position.last_activity = Clock::get()?.unix_timestamp;
 
-        emit!(YieldWithdrawn {
+        emit!(CrossChainWithdrawRequested {
             user: ctx.accounts.user.key(),
             amount: params.amount,
-            target_chain: params.withdraw_to_chain,
+            target_chain: params.target_chain_id,
             timestamp: Clock::get()?.unix_timestamp,
         });
 
@@ -326,45 +565,72 @@ impl WithdrawYield<'_> {
     }
 }
 
-// ============================== Other Instructions (Simplified) ==============================
+// ============================== Rebalance Position ==============================
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct RebalancePositionParams {
     pub from_protocol: String,
     pub to_protocol: String,
     pub amount: u64,
-    pub target_chain: u32,
+    pub target_chain_id: u32,
 }
 
 #[derive(Accounts)]
+#[instruction(params: RebalancePositionParams)]
 pub struct RebalancePosition<'info> {
     #[account(
+        mut,
         seeds = [USER_POSITION_SEED, user.key().as_ref()],
         bump = user_position.bump,
         has_one = user @ YieldAggregatorError::Unauthorized
     )]
     pub user_position: Account<'info, UserPosition>,
     #[account(
+        seeds = [PROTOCOL_SEED, params.from_protocol.as_bytes()],
+        bump = from_protocol.bump,
+        constraint = from_protocol.is_active @ YieldAggregatorError::ProtocolInactive
+    )]
+    pub from_protocol: Account<'info, ProtocolInfo>,
+    #[account(
+        seeds = [PROTOCOL_SEED, params.to_protocol.as_bytes()],
+        bump = to_protocol.bump,
+        constraint = to_protocol.is_active @ YieldAggregatorError::ProtocolInactive
+    )]
+    pub to_protocol: Account<'info, ProtocolInfo>,
+    #[account(
+        mut,
         seeds = [YIELD_AGGREGATOR_SEED],
-        bump = yield_aggregator.bump
+        bump = yield_aggregator.bump,
+        constraint = !yield_aggregator.emergency_paused @ YieldAggregatorError::EmergencyPaused
     )]
     pub yield_aggregator: Account<'info, YieldAggregator>,
+    #[account(mut)]
     pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 impl RebalancePosition<'_> {
     pub fn apply(ctx: &mut Context<Self>, params: &RebalancePositionParams) -> Result<()> {
+        require!(params.amount > 0, YieldAggregatorError::InvalidAmount);
+
+        // Update user position
+        let user_position = &mut ctx.accounts.user_position;
+        user_position.last_activity = Clock::get()?.unix_timestamp;
+
         emit!(RebalanceRequested {
             user: ctx.accounts.user.key(),
             from_protocol: params.from_protocol.clone(),
             to_protocol: params.to_protocol.clone(),
             amount: params.amount,
-            target_chain: params.target_chain,
+            target_chain: params.target_chain_id,
             timestamp: Clock::get()?.unix_timestamp,
         });
+
         Ok(())
     }
 }
+
+// ============================== Update Yield Rates ==============================
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct UpdateYieldRatesParams {
@@ -382,12 +648,15 @@ pub struct UpdateYieldRates<'info> {
     )]
     pub protocol_info: Account<'info, ProtocolInfo>,
     #[account(
+        mut,
         seeds = [YIELD_AGGREGATOR_SEED],
         bump = yield_aggregator.bump,
         has_one = admin @ YieldAggregatorError::Unauthorized
     )]
     pub yield_aggregator: Account<'info, YieldAggregator>,
+    #[account(mut)]
     pub admin: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 impl UpdateYieldRates<'_> {
@@ -397,13 +666,16 @@ impl UpdateYieldRates<'_> {
         protocol_info.last_update = Clock::get()?.unix_timestamp;
 
         emit!(YieldRateUpdated {
-            protocol: params.protocol_name.clone(),
+            protocol: params.protocol_name,
             new_apy: params.new_apy,
             timestamp: Clock::get()?.unix_timestamp,
         });
+
         Ok(())
     }
 }
+
+// ============================== Compound Yield ==============================
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct CompoundYieldParams {
@@ -411,6 +683,7 @@ pub struct CompoundYieldParams {
 }
 
 #[derive(Accounts)]
+#[instruction(params: CompoundYieldParams)]
 pub struct CompoundYield<'info> {
     #[account(
         mut,
@@ -419,34 +692,51 @@ pub struct CompoundYield<'info> {
         has_one = user @ YieldAggregatorError::Unauthorized
     )]
     pub user_position: Account<'info, UserPosition>,
+    #[account(
+        seeds = [PROTOCOL_SEED, params.protocol_name.as_bytes()],
+        bump = protocol_info.bump,
+        constraint = protocol_info.is_active @ YieldAggregatorError::ProtocolInactive
+    )]
+    pub protocol_info: Account<'info, ProtocolInfo>,
+    #[account(
+        mut,
+        seeds = [YIELD_AGGREGATOR_SEED],
+        bump = yield_aggregator.bump,
+        constraint = !yield_aggregator.emergency_paused @ YieldAggregatorError::EmergencyPaused
+    )]
+    pub yield_aggregator: Account<'info, YieldAggregator>,
+    #[account(mut)]
     pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 impl CompoundYield<'_> {
     pub fn apply(ctx: &mut Context<Self>, params: &CompoundYieldParams) -> Result<()> {
         let user_position = &mut ctx.accounts.user_position;
-        
         require!(user_position.total_yield_earned > 0, YieldAggregatorError::NoYieldToCompound);
-        
-        let yield_to_compound = user_position.total_yield_earned;
-        user_position.total_deposits = user_position.total_deposits.checked_add(yield_to_compound).unwrap();
+
+        let yield_amount = user_position.total_yield_earned;
+        user_position.total_deposits += yield_amount;
         user_position.total_yield_earned = 0;
         user_position.last_activity = Clock::get()?.unix_timestamp;
 
         emit!(YieldCompounded {
             user: ctx.accounts.user.key(),
             protocol: params.protocol_name.clone(),
-            yield_amount: yield_to_compound,
+            yield_amount,
             new_principal: user_position.total_deposits,
             timestamp: Clock::get()?.unix_timestamp,
         });
+
         Ok(())
     }
 }
 
+// ============================== Emergency Pause ==============================
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct EmergencyPauseParams {
-    pub paused: bool,
+    pub pause: bool,
 }
 
 #[derive(Accounts)]
@@ -458,15 +748,17 @@ pub struct EmergencyPause<'info> {
         has_one = admin @ YieldAggregatorError::Unauthorized
     )]
     pub yield_aggregator: Account<'info, YieldAggregator>,
+    #[account(mut)]
     pub admin: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 impl EmergencyPause<'_> {
     pub fn apply(ctx: &mut Context<Self>, params: &EmergencyPauseParams) -> Result<()> {
         let yield_aggregator = &mut ctx.accounts.yield_aggregator;
-        yield_aggregator.emergency_paused = params.paused;
+        yield_aggregator.emergency_paused = params.pause;
 
-        if params.paused {
+        if params.pause {
             emit!(EmergencyPauseActivated {
                 admin: ctx.accounts.admin.key(),
                 timestamp: Clock::get()?.unix_timestamp,
@@ -477,22 +769,26 @@ impl EmergencyPause<'_> {
                 timestamp: Clock::get()?.unix_timestamp,
             });
         }
+
         Ok(())
     }
 }
+
+// ============================== Get Optimal Strategy ==============================
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct GetOptimalStrategyParams {
     pub amount: u64,
     pub risk_tolerance: u8,
+    pub min_apy: u64,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct OptimalStrategyResponse {
-    pub protocol_name: String,
-    pub chain_id: u32,
+    pub recommended_protocol: String,
     pub expected_apy: u64,
     pub risk_score: u8,
+    pub chain_id: u32,
 }
 
 #[derive(Accounts)]
@@ -502,15 +798,20 @@ pub struct GetOptimalStrategy<'info> {
         bump = yield_aggregator.bump
     )]
     pub yield_aggregator: Account<'info, YieldAggregator>,
+    pub user: Signer<'info>,
 }
 
 impl GetOptimalStrategy<'_> {
-    pub fn apply(_ctx: &Context<Self>, _params: &GetOptimalStrategyParams) -> Result<OptimalStrategyResponse> {
+    pub fn apply(ctx: &Context<Self>, params: &GetOptimalStrategyParams) -> Result<OptimalStrategyResponse> {
+        // This is a simplified implementation
+        // In a real system, this would analyze all protocols and return the best match
+        
+        // For demo purposes, return a default strategy
         Ok(OptimalStrategyResponse {
-            protocol_name: "marinade".to_string(),
-            chain_id: 40168,
-            expected_apy: 900,
+            recommended_protocol: "marinade".to_string(),
+            expected_apy: 850, // 8.5%
             risk_score: 6,
+            chain_id: 40168, // Solana
         })
     }
 }

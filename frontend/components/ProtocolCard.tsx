@@ -1,11 +1,11 @@
-import React from 'react'
-import { Protocol } from './YieldAggregatorDashboard'
+import React from "react";
+import { Protocol } from "./YieldAggregatorDashboard";
 
 interface ProtocolCardProps {
-  protocol: Protocol
-  onDeposit: () => void
-  formatCurrency: (amount: number) => string
-  formatApy: (apy: number) => string
+  protocol: Protocol;
+  onDeposit: () => void;
+  formatCurrency: (amount: number) => string;
+  formatApy: (apy: number) => string;
 }
 
 export const ProtocolCard: React.FC<ProtocolCardProps> = ({
@@ -15,29 +15,35 @@ export const ProtocolCard: React.FC<ProtocolCardProps> = ({
   formatApy,
 }) => {
   const getRiskColor = (riskScore: number) => {
-    if (riskScore <= 3) return 'text-green-600'
-    if (riskScore <= 6) return 'text-yellow-600'
-    return 'text-red-600'
-  }
+    if (riskScore <= 3) return "text-green-600";
+    if (riskScore <= 6) return "text-yellow-600";
+    return "text-red-600";
+  };
 
   const getRiskLabel = (riskScore: number) => {
-    if (riskScore <= 3) return 'Low Risk'
-    if (riskScore <= 6) return 'Medium Risk'
-    return 'High Risk'
-  }
+    if (riskScore <= 3) return "Low Risk";
+    if (riskScore <= 6) return "Medium Risk";
+    return "High Risk";
+  };
 
   const getChainName = (chainId: number) => {
     switch (chainId) {
-      case 1: return 'Ethereum'
-      case 137: return 'Polygon'
-      case 56: return 'BSC'
-      case 43114: return 'Avalanche'
-      case 40168: return 'Solana'
-      default: return `Chain ${chainId}`
+      case 1:
+        return "Ethereum";
+      case 137:
+        return "Polygon";
+      case 56:
+        return "BSC";
+      case 43114:
+        return "Avalanche";
+      case 40168:
+        return "Solana";
+      default:
+        return `Chain ${chainId}`;
     }
-  }
+  };
 
-  const utilizationRate = (protocol.tvl / protocol.maxCapacity) * 100
+  const utilizationRate = (protocol.tvl / protocol.maxCapacity) * 100;
 
   return (
     <div className="card hover:shadow-xl transition-shadow duration-300">
@@ -51,12 +57,14 @@ export const ProtocolCard: React.FC<ProtocolCardProps> = ({
             {getChainName(protocol.chainId)}
           </p>
         </div>
-        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-          protocol.isActive 
-            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-            : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-        }`}>
-          {protocol.isActive ? 'Active' : 'Inactive'}
+        <div
+          className={`px-2 py-1 rounded-full text-xs font-medium ${
+            protocol.isActive
+              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+              : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+          }`}
+        >
+          {protocol.isActive ? "Active" : "Inactive"}
         </div>
       </div>
 
@@ -97,7 +105,11 @@ export const ProtocolCard: React.FC<ProtocolCardProps> = ({
         <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
           <div
             className={`h-2 rounded-full transition-all duration-300 ${
-              utilizationRate > 80 ? 'bg-red-500' : utilizationRate > 60 ? 'bg-yellow-500' : 'bg-green-500'
+              utilizationRate > 80
+                ? "bg-red-500"
+                : utilizationRate > 60
+                  ? "bg-yellow-500"
+                  : "bg-green-500"
             }`}
             style={{ width: `${Math.min(utilizationRate, 100)}%` }}
           ></div>
@@ -114,8 +126,11 @@ export const ProtocolCard: React.FC<ProtocolCardProps> = ({
         disabled={!protocol.isActive || utilizationRate >= 100}
         className="w-full btn-primary disabled:bg-gray-400 disabled:cursor-not-allowed"
       >
-        {!protocol.isActive ? 'Protocol Inactive' : 
-         utilizationRate >= 100 ? 'At Capacity' : 'Deposit'}
+        {!protocol.isActive
+          ? "Protocol Inactive"
+          : utilizationRate >= 100
+            ? "At Capacity"
+            : "Deposit"}
       </button>
 
       {/* Last Update */}
@@ -123,5 +138,5 @@ export const ProtocolCard: React.FC<ProtocolCardProps> = ({
         Last updated: {new Date(protocol.lastUpdate).toLocaleString()}
       </p>
     </div>
-  )
-}
+  );
+};

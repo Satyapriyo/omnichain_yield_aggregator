@@ -1,13 +1,13 @@
-import React, { useState } from 'react'
-import { YieldAggregatorClient } from '@/lib/yieldAggregatorClient'
-import { Protocol } from './YieldAggregatorDashboard'
+import React, { useState } from "react";
+import { YieldAggregatorClient } from "@/lib/yieldAggregatorClient";
+import { Protocol } from "./YieldAggregatorDashboard";
 
 interface DepositModalProps {
-  protocol: Protocol
-  client: YieldAggregatorClient
-  isOpen: boolean
-  onClose: () => void
-  onSuccess: () => void
+  protocol: Protocol;
+  client: YieldAggregatorClient;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
 }
 
 export const DepositModal: React.FC<DepositModalProps> = ({
@@ -17,49 +17,51 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const [amount, setAmount] = useState('')
-  const [minApy, setMinApy] = useState(protocol.currentApy.toString())
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [amount, setAmount] = useState("");
+  const [minApy, setMinApy] = useState(protocol.currentApy.toString());
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setIsLoading(true)
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
 
     try {
-      const amountNum = parseFloat(amount)
-      const minApyNum = parseFloat(minApy)
+      const amountNum = parseFloat(amount);
+      const minApyNum = parseFloat(minApy);
 
       if (isNaN(amountNum) || amountNum <= 0) {
-        throw new Error('Please enter a valid amount')
+        throw new Error("Please enter a valid amount");
       }
 
       if (isNaN(minApyNum) || minApyNum < 0) {
-        throw new Error('Please enter a valid minimum APY')
+        throw new Error("Please enter a valid minimum APY");
       }
 
       // For demo purposes, we'll use the first available strategy
       // In a real implementation, you'd map the protocol to the correct strategy
-      const strategies = await client.getStrategies()
-      const targetStrategy = strategies.find(s => s.name.toLowerCase().includes(protocol.name.toLowerCase()))
-      
+      const strategies = await client.getStrategies();
+      const targetStrategy = strategies.find((s) =>
+        s.name.toLowerCase().includes(protocol.name.toLowerCase()),
+      );
+
       if (!targetStrategy) {
-        throw new Error(`No strategy found for ${protocol.name}`)
+        throw new Error(`No strategy found for ${protocol.name}`);
       }
 
-      await client.deposit(targetStrategy.publicKey, amountNum)
+      await client.deposit(targetStrategy.publicKey, amountNum);
 
-      onSuccess()
-      onClose()
+      onSuccess();
+      onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -84,7 +86,9 @@ export const DepositModal: React.FC<DepositModalProps> = ({
               <div>
                 <p className="text-gray-600 dark:text-gray-300">Chain</p>
                 <p className="font-semibold text-gray-900 dark:text-white">
-                  {protocol.chainId === 40168 ? 'Solana' : `Chain ${protocol.chainId}`}
+                  {protocol.chainId === 40168
+                    ? "Solana"
+                    : `Chain ${protocol.chainId}`}
                 </p>
               </div>
               <div>
@@ -100,9 +104,13 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                 </p>
               </div>
               <div>
-                <p className="text-gray-600 dark:text-gray-300">Available Capacity</p>
+                <p className="text-gray-600 dark:text-gray-300">
+                  Available Capacity
+                </p>
                 <p className="font-semibold text-gray-900 dark:text-white">
-                  ${((protocol.maxCapacity - protocol.tvl) / 1000000).toFixed(1)}M
+                  $
+                  {((protocol.maxCapacity - protocol.tvl) / 1000000).toFixed(1)}
+                  M
                 </p>
               </div>
             </div>
@@ -147,7 +155,9 @@ export const DepositModal: React.FC<DepositModalProps> = ({
 
             {error && (
               <div className="bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-md p-3">
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  {error}
+                </p>
               </div>
             )}
 
@@ -166,7 +176,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                 className="flex-1 btn-primary"
                 disabled={isLoading || !amount}
               >
-                {isLoading ? 'Processing...' : 'Deposit'}
+                {isLoading ? "Processing..." : "Deposit"}
               </button>
             </div>
           </form>
@@ -174,12 +184,13 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           {/* Info */}
           <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900 rounded-lg">
             <p className="text-sm text-blue-800 dark:text-blue-200">
-              💡 <strong>Note:</strong> Cross-chain deposits may take several minutes to process.
-              You'll receive a confirmation once the transaction is complete.
+              💡 <strong>Note:</strong> Cross-chain deposits may take several
+              minutes to process. You'll receive a confirmation once the
+              transaction is complete.
             </p>
           </div>
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
