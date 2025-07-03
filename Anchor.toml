@@ -7,6 +7,7 @@ skip-lint = false
 
 [programs.localnet]
 my_oapp = "DXAdhRG2Z4xt9sy9g6g5DtmRdXoBoZWStccr6sph4Dwm"
+yield-aggregator = "59EhuyPwcVDy7YQtgM8WiXsjiG62QRhSRFqHkAHRCTnS"
 
 [registry]
 url = "https://api.apr.dev"

@@ -15,6 +15,7 @@ pub struct ProtocolAdded {
     pub apy: u64,
     pub max_capacity: u64,
     pub risk_score: u8,
+    pub timestamp: i64,
 }
 
 #[event]

@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use crate::yield_aggregator::{state::*, events::*, errors::*};
+use crate::{state::*, error::YieldAggregatorError};
 use crate::{YIELD_AGGREGATOR_SEED, PROTOCOL_SEED, USER_POSITION_SEED};
 
 // ============================== Initialize Yield Aggregator ==============================
@@ -26,11 +26,9 @@ pub struct InitializeYieldAggregator<'info> {
 
 impl InitializeYieldAggregator<'_> {
     pub fn apply(ctx: &mut Context<Self>, params: &InitializeYieldAggregatorParams) -> Result<()> {
-        // Minimize stack usage by using references
         let aggregator = &mut ctx.accounts.yield_aggregator;
         let timestamp = Clock::get()?.unix_timestamp;
         
-        // Initialize with minimal stack usage
         aggregator.admin = params.admin;
         aggregator.total_protocols = 0;
         aggregator.total_tvl = 0;
@@ -39,14 +37,6 @@ impl InitializeYieldAggregator<'_> {
         aggregator.fee_rate = 0;
         aggregator.fee_recipient = params.admin;
         aggregator.bump = ctx.bumps.yield_aggregator;
-
-        // Emit event with minimal stack usage
-        emit!(YieldAggregatorInitialized {
-            admin: params.admin,
-            fee_rate: 0,
-            fee_recipient: params.admin,
-            timestamp,
-        });
 
         Ok(())
     }
@@ -88,13 +78,11 @@ pub struct AddProtocol<'info> {
 
 impl AddProtocol<'_> {
     pub fn apply(ctx: &mut Context<Self>, params: &AddProtocolParams) -> Result<()> {
-        // Validate parameters early to minimize stack usage
         require!(params.risk_score >= 1 && params.risk_score <= 10, YieldAggregatorError::InvalidRiskScore);
         require!(params.name.len() <= 32, YieldAggregatorError::InvalidProtocolName);
 
         let timestamp = Clock::get()?.unix_timestamp;
         
-        // Initialize protocol info with minimal stack usage
         let protocol = &mut ctx.accounts.protocol_info;
         protocol.name = params.name.clone();
         protocol.chain_id = params.chain_id;
@@ -106,18 +94,7 @@ impl AddProtocol<'_> {
         protocol.last_update = timestamp;
         protocol.bump = ctx.bumps.protocol_info;
 
-        // Update aggregator
         ctx.accounts.yield_aggregator.total_protocols += 1;
-
-        // Emit event
-        emit!(ProtocolAdded {
-            name: params.name.clone(),
-            chain_id: params.chain_id,
-            apy: params.initial_apy,
-            max_capacity: params.max_capacity,
-            risk_score: params.risk_score,
-            timestamp,
-        });
 
         Ok(())
     }
@@ -170,7 +147,6 @@ impl DepositForYield<'_> {
         let timestamp = Clock::get()?.unix_timestamp;
         let user_key = ctx.accounts.user.key();
         
-        // Update user position with minimal stack usage
         let user_position = &mut ctx.accounts.user_position;
         user_position.user = user_key;
         user_position.total_deposits += params.amount;
@@ -178,17 +154,7 @@ impl DepositForYield<'_> {
         user_position.last_activity = timestamp;
         user_position.bump = ctx.bumps.user_position;
 
-        // Update total TVL
         ctx.accounts.yield_aggregator.total_tvl += params.amount;
-
-        // Emit event
-        emit!(CrossChainDepositRequested {
-            user: user_key,
-            amount: params.amount,
-            target_chain: params.target_chain_id,
-            target_protocol: params.target_protocol.clone(),
-            timestamp,
-        });
 
         Ok(())
     }
@@ -228,18 +194,7 @@ impl WithdrawYield<'_> {
         require!(params.amount > 0, YieldAggregatorError::InvalidAmount);
 
         let timestamp = Clock::get()?.unix_timestamp;
-        let user_key = ctx.accounts.user.key();
-        
-        // Update user position
         ctx.accounts.user_position.last_activity = timestamp;
-
-        // Emit event
-        emit!(CrossChainWithdrawRequested {
-            user: user_key,
-            amount: params.amount,
-            target_chain: params.target_chain_id,
-            timestamp,
-        });
 
         Ok(())
     }
@@ -294,20 +249,7 @@ impl RebalancePosition<'_> {
         require!(params.amount > 0, YieldAggregatorError::InvalidAmount);
 
         let timestamp = Clock::get()?.unix_timestamp;
-        let user_key = ctx.accounts.user.key();
-        
-        // Update user position
         ctx.accounts.user_position.last_activity = timestamp;
-
-        // Emit event
-        emit!(RebalanceRequested {
-            user: user_key,
-            from_protocol: params.from_protocol.clone(),
-            to_protocol: params.to_protocol.clone(),
-            amount: params.amount,
-            target_chain: params.target_chain_id,
-            timestamp,
-        });
 
         Ok(())
     }
@@ -346,17 +288,9 @@ impl UpdateYieldRates<'_> {
     pub fn apply(ctx: &mut Context<Self>, params: &UpdateYieldRatesParams) -> Result<()> {
         let timestamp = Clock::get()?.unix_timestamp;
         
-        // Update protocol info
         let protocol = &mut ctx.accounts.protocol_info;
         protocol.current_apy = params.new_apy;
         protocol.last_update = timestamp;
-
-        // Emit event
-        emit!(YieldRateUpdated {
-            protocol: params.protocol_name.clone(),
-            new_apy: params.new_apy,
-            timestamp,
-        });
 
         Ok(())
     }
@@ -403,22 +337,11 @@ impl CompoundYield<'_> {
         require!(user_position.total_yield_earned > 0, YieldAggregatorError::NoYieldToCompound);
 
         let timestamp = Clock::get()?.unix_timestamp;
-        let user_key = ctx.accounts.user.key();
         let yield_amount = user_position.total_yield_earned;
         
-        // Update user position
         user_position.total_deposits += yield_amount;
         user_position.total_yield_earned = 0;
         user_position.last_activity = timestamp;
-
-        // Emit event
-        emit!(YieldCompounded {
-            user: user_key,
-            protocol: params.protocol_name.clone(),
-            yield_amount,
-            new_principal: user_position.total_deposits,
-            timestamp,
-        });
 
         Ok(())
     }
@@ -447,29 +370,7 @@ pub struct EmergencyPause<'info> {
 
 impl EmergencyPause<'_> {
     pub fn apply(ctx: &mut Context<Self>, params: &EmergencyPauseParams) -> Result<()> {
-        let timestamp = Clock::get()?.unix_timestamp;
-        let admin_key = ctx.accounts.admin.key();
-        
-        // Update emergency pause state
         ctx.accounts.yield_aggregator.emergency_paused = params.pause;
-
-        // Emit appropriate event
-        if params.pause {
-            emit!(EmergencyPauseActivated {
-                admin: admin_key,
-                timestamp,
-            });
-        } else {
-            emit!(EmergencyPauseDeactivated {
-                admin: admin_key,
-                timestamp,
-            });
-        }
-
         Ok(())
     }
 }
-
-// Note: GetOptimalStrategy is removed to reduce stack usage.
-// This functionality should be implemented client-side by fetching protocol data 
-// and calculating the optimal strategy based on user preferences.
