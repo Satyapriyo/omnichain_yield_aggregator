@@ -3,6 +3,8 @@ use anchor_lang::prelude::*;
 #[event]
 pub struct YieldAggregatorInitialized {
     pub admin: Pubkey,
+    pub fee_rate: u64,
+    pub fee_recipient: Pubkey,
     pub timestamp: i64,
 }
 

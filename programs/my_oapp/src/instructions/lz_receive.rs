@@ -38,12 +38,18 @@ impl<'info> LzReceive<'info> {
             src_eid: params.src_eid,
             sender: params.sender,
             nonce: params.nonce,
+            guid: params.guid,
+            message: params.message.clone(),
         };
+        
+        // Prepare the seeds for the OApp Store PDA
+        let seeds: &[&[u8]] = &[STORE_SEED, &[ctx.accounts.store.bump]];
         
         oapp::endpoint_cpi::clear(
             ENDPOINT_ID,
             ctx.accounts.store.key(),
             ctx.remaining_accounts,
+            seeds,
             clear_params,
         )?;
         

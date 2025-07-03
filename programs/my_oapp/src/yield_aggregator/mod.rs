@@ -3,8 +3,7 @@ pub mod state;
 pub mod events;
 pub mod errors;
 
-pub use instructions::*;
-// Remove unused exports to fix warnings
-// pub use state::*;
-// pub use events::*;
-// pub use errors::*;
+// Only export what's needed to avoid unused import warnings
+pub use state::*;
+pub use events::*;
+pub use errors::*;

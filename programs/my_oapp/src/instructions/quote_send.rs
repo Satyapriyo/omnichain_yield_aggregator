@@ -31,6 +31,7 @@ impl<'info> QuoteSend<'info> {
         let message = msg_codec::encode(&params.message);
         let quote_params = QuoteParams {
             dst_eid: params.dst_eid,
+            sender: ctx.accounts.store.key(),
             receiver: ctx.accounts.peer.peer_address,
             message,
             options: ctx
@@ -42,7 +43,6 @@ impl<'info> QuoteSend<'info> {
         };
         oapp::endpoint_cpi::quote(
             ENDPOINT_ID,
-            ctx.accounts.store.key(),
             ctx.remaining_accounts,
             quote_params,
         )

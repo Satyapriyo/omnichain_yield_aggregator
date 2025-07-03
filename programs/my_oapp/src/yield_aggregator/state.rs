@@ -9,6 +9,12 @@ pub struct YieldAggregator {
     pub total_yield_earned: u64,
     pub emergency_paused: bool,
     pub bump: u8,
+    pub fee_rate: u64,
+    pub fee_recipient: Pubkey,
+}
+
+impl YieldAggregator {
+    pub const SIZE: usize = 8 + 32 + 4 + 8 + 8 + 1 + 1 + 8 + 32; // discriminator + admin + total_protocols + total_tvl + total_yield_earned + emergency_paused + bump + fee_rate + fee_recipient
 }
 
 #[account]
