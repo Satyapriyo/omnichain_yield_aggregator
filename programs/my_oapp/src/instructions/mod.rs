@@ -4,7 +4,7 @@ pub mod lz_receive;
 pub mod lz_receive_types;
 pub mod quote_send;
 pub mod set_peer_config;
-
+pub mod initialize_yield_aggregator;
 
 pub use send::*;
 pub use init_store::*;
@@ -12,25 +12,4 @@ pub use lz_receive::*;
 pub use lz_receive_types::*;
 pub use quote_send::*;
 pub use set_peer_config::*;
-
-
-pub mod initialize_yield_aggregator;
-pub mod add_protocol;
-pub mod deposit_for_yield;
-pub mod withdraw_yield;
-pub mod rebalance_position;
-pub mod update_yield_rates;
-pub mod compound_yield;
-pub mod emergency_pause;
-pub mod get_optimal_strategy;
-
-
 pub use initialize_yield_aggregator::*;
-pub use add_protocol::*;
-pub use deposit_for_yield::*;
-pub use withdraw_yield::*;
-pub use rebalance_position::*;
-pub use update_yield_rates::*;
-pub use compound_yield::*;
-pub use emergency_pause::*;
-pub use get_optimal_strategy::*;
