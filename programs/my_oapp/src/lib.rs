@@ -6,10 +6,12 @@ mod yield_aggregator; // Add this module
 
 use anchor_lang::prelude::*;
 use instructions::*;
-use yield_aggregator::*; // Import yield aggregator items
 use oapp::{endpoint::MessagingFee, endpoint_cpi::LzAccount, LzReceiveParams};
 use solana_helper::program_id_from_env;
 use state::*;
+
+// Import only the instruction structs, not the parameter structs
+use yield_aggregator::instructions::*;
 
 // to build in verifiable mode and using environment variable (what the README instructs), run:
 // anchor build -v -e MYOAPP_ID=<OAPP_PROGRAM_ID>
