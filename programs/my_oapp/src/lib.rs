@@ -10,18 +10,6 @@ use oapp::{endpoint::MessagingFee, LzReceiveParams};
 use solana_helper::program_id_from_env;
 use state::*;
 
-// Import yield aggregator instructions with explicit names to avoid conflicts
-use yield_aggregator::instructions::{
-    AddProtocol as YieldAddProtocol, AddProtocolParams,
-    DepositForYield as YieldDepositForYield, DepositForYieldParams,
-    RebalancePosition as YieldRebalancePosition, RebalancePositionParams,
-    UpdateYieldRates as YieldUpdateYieldRates, UpdateYieldRatesParams,
-    CompoundYield as YieldCompoundYield, CompoundYieldParams,
-    EmergencyPause as YieldEmergencyPause, EmergencyPauseParams,
-    GetOptimalStrategy as YieldGetOptimalStrategy, GetOptimalStrategyParams,
-    OptimalStrategyResponse,
-};
-
 declare_id!(anchor_lang::solana_program::pubkey::Pubkey::new_from_array(program_id_from_env!(
     "MYOAPP_ID",
     "41NCdrEvXhQ4mZgyJkmqYxL6A1uEmnraGj31UJ6PsXd3"
@@ -81,51 +69,53 @@ pub mod my_oapp {
     }
 
     pub fn add_protocol(
-        mut ctx: Context<YieldAddProtocol>,
+        mut ctx: Context<AddProtocol>,
         params: AddProtocolParams,
     ) -> Result<()> {
-        YieldAddProtocol::apply(&mut ctx, &params)
+        AddProtocol::apply(&mut ctx, &params)
     }
 
     pub fn deposit_for_yield(
-        mut ctx: Context<YieldDepositForYield>,
+        mut ctx: Context<DepositForYield>,
         params: DepositForYieldParams,
     ) -> Result<()> {
-        YieldDepositForYield::apply(&mut ctx, &params)
+        DepositForYield::apply(&mut ctx, &params)
     }
 
     pub fn rebalance_position(
-        mut ctx: Context<YieldRebalancePosition>,
+        mut ctx: Context<RebalancePosition>,
         params: RebalancePositionParams,
     ) -> Result<()> {
-        YieldRebalancePosition::apply(&mut ctx, &params)
+        RebalancePosition::apply(&mut ctx, &params)
     }
 
     pub fn update_yield_rates(
-        mut ctx: Context<YieldUpdateYieldRates>,
+        mut ctx: Context<UpdateYieldRates>,
         params: UpdateYieldRatesParams,
     ) -> Result<()> {
-        YieldUpdateYieldRates::apply(&mut ctx, &params)
+        UpdateYieldRates::apply(&mut ctx, &params)
     }
 
     pub fn compound_yield(
-        mut ctx: Context<YieldCompoundYield>,
+        mut ctx: Context<CompoundYield>,
         params: CompoundYieldParams,
     ) -> Result<()> {
-        YieldCompoundYield::apply(&mut ctx, &params)
+        CompoundYield::apply(&mut ctx, &params)
     }
 
     pub fn emergency_pause(
-        mut ctx: Context<YieldEmergencyPause>,
+        mut ctx: Context<EmergencyPause>,
         params: EmergencyPauseParams,
     ) -> Result<()> {
-        YieldEmergencyPause::apply(&mut ctx, &params)
+        EmergencyPause::apply(&mut ctx, &params)
     }
 
-    pub fn get_optimal_strategy(
-        ctx: Context<YieldGetOptimalStrategy>,
-        params: GetOptimalStrategyParams,
-    ) -> Result<OptimalStrategyResponse> {
-        YieldGetOptimalStrategy::apply(&ctx, &params)
+    pub fn withdraw_yield(
+        mut ctx: Context<WithdrawYield>,
+        params: WithdrawYieldParams,
+    ) -> Result<()> {
+        WithdrawYield::apply(&mut ctx, &params)
     }
+
+
 }
