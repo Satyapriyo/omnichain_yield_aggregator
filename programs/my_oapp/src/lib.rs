@@ -95,13 +95,6 @@ pub mod my_oapp {
         YieldDepositForYield::apply(&mut ctx, &params)
     }
 
-    pub fn withdraw_yield(
-        mut ctx: Context<YieldWithdrawYield>,
-        params: WithdrawYieldParams,
-    ) -> Result<()> {
-        YieldWithdrawYield::apply(&mut ctx, &params)
-    }
-
     pub fn rebalance_position(
         mut ctx: Context<YieldRebalancePosition>,
         params: RebalancePositionParams,
