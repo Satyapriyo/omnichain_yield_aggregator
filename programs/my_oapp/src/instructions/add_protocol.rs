@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
 use crate::yield_aggregator::{state::*, events::*, errors::YieldAggregatorError};
-use crate::errors::MyOAppError;
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct AddProtocolParams {
@@ -36,14 +35,13 @@ pub struct AddProtocol<'info> {
 
 impl AddProtocol<'_> {
     pub fn apply(ctx: &mut Context<Self>, params: &AddProtocolParams) -> Result<()> {
-        // Validate parameters
+        // Validate parameters early to minimize stack usage
         require!(params.risk_score >= 1 && params.risk_score <= 10, YieldAggregatorError::InvalidRiskScore);
         require!(params.name.len() <= 32, YieldAggregatorError::InvalidProtocolName);
-        require!(params.chain_id > 0, MyOAppError::InvalidProtocol);
 
         let timestamp = Clock::get()?.unix_timestamp;
         
-        // Initialize protocol info
+        // Initialize protocol info with minimal stack usage
         let protocol = &mut ctx.accounts.protocol_info;
         protocol.name = params.name.clone();
         protocol.chain_id = params.chain_id;

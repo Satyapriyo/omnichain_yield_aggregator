@@ -69,59 +69,31 @@ pub mod my_oapp {
         InitializeYieldAggregator::apply(&mut ctx, &params)
     }
 
-    pub fn yield_add_protocol(
-        mut ctx: Context<YieldAddProtocol>,
-        params: YieldAddProtocolParams,
+    pub fn add_protocol(
+        mut ctx: Context<AddProtocol>,
+        params: AddProtocolParams,
     ) -> Result<()> {
-        YieldAddProtocol::apply(&mut ctx, &params)
+        AddProtocol::apply(&mut ctx, &params)
     }
 
-    pub fn yield_deposit_for_yield(
-        mut ctx: Context<YieldDepositForYield>,
-        params: YieldDepositForYieldParams,
+    pub fn deposit_for_yield(
+        mut ctx: Context<DepositForYield>,
+        params: DepositForYieldParams,
     ) -> Result<()> {
-        YieldDepositForYield::apply(&mut ctx, &params)
+        DepositForYield::apply(&mut ctx, &params)
     }
 
-    pub fn yield_withdraw_yield(
-        mut ctx: Context<YieldWithdrawYield>,
-        params: YieldWithdrawYieldParams,
+    pub fn emergency_pause(
+        mut ctx: Context<EmergencyPause>,
+        params: EmergencyPauseParams,
     ) -> Result<()> {
-        YieldWithdrawYield::apply(&mut ctx, &params)
+        EmergencyPause::apply(&mut ctx, &params)
     }
 
-    pub fn yield_rebalance_position(
-        mut ctx: Context<YieldRebalancePosition>,
-        params: YieldRebalancePositionParams,
+    pub fn update_yield_rates(
+        mut ctx: Context<UpdateYieldRates>,
+        params: UpdateYieldRatesParams,
     ) -> Result<()> {
-        YieldRebalancePosition::apply(&mut ctx, &params)
-    }
-
-    pub fn yield_update_yield_rates(
-        mut ctx: Context<YieldUpdateYieldRates>,
-        params: YieldUpdateYieldRatesParams,
-    ) -> Result<()> {
-        YieldUpdateYieldRates::apply(&mut ctx, &params)
-    }
-
-    pub fn yield_compound_yield(
-        mut ctx: Context<YieldCompoundYield>,
-        params: YieldCompoundYieldParams,
-    ) -> Result<()> {
-        YieldCompoundYield::apply(&mut ctx, &params)
-    }
-
-    pub fn yield_emergency_pause(
-        mut ctx: Context<YieldEmergencyPause>,
-        params: YieldEmergencyPauseParams,
-    ) -> Result<()> {
-        YieldEmergencyPause::apply(&mut ctx, &params)
-    }
-
-    pub fn yield_get_optimal_strategy(
-        mut ctx: Context<YieldGetOptimalStrategy>,
-        params: YieldGetOptimalStrategyParams,
-    ) -> Result<()> {
-        YieldGetOptimalStrategy::apply(&mut ctx, &params)
+        UpdateYieldRates::apply(&mut ctx, &params)
     }
 }

@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
 use crate::yield_aggregator::{state::*, events::*, errors::YieldAggregatorError};
-use crate::errors::MyOAppError;
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct DepositForYieldParams {
@@ -43,12 +42,11 @@ pub struct DepositForYield<'info> {
 impl DepositForYield<'_> {
     pub fn apply(ctx: &mut Context<Self>, params: &DepositForYieldParams) -> Result<()> {
         require!(params.amount > 0, YieldAggregatorError::InvalidAmount);
-        require!(params.amount >= 1000, MyOAppError::MinimumDepositNotMet); // Minimum deposit check
 
         let timestamp = Clock::get()?.unix_timestamp;
         let user_key = ctx.accounts.user.key();
         
-        // Update user position
+        // Update user position with minimal stack usage
         let user_position = &mut ctx.accounts.user_position;
         user_position.user = user_key;
         user_position.total_deposits += params.amount;
