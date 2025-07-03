@@ -388,7 +388,7 @@ impl EmergencyPause<'_> {
     }
 }
 
-// ============================== Get Optimal Strategy ==============================
+// ============================== Get Optimal Strategy (View Function) ==============================
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct GetOptimalStrategyParams {

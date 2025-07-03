@@ -14,6 +14,7 @@ use state::*;
 use yield_aggregator::instructions::{
     AddProtocol as YieldAddProtocol, AddProtocolParams,
     DepositForYield as YieldDepositForYield, DepositForYieldParams,
+    WithdrawYield as YieldWithdrawYield, WithdrawYieldParams,
     RebalancePosition as YieldRebalancePosition, RebalancePositionParams,
     UpdateYieldRates as YieldUpdateYieldRates, UpdateYieldRatesParams,
     CompoundYield as YieldCompoundYield, CompoundYieldParams,
@@ -94,6 +95,13 @@ pub mod my_oapp {
         YieldDepositForYield::apply(&mut ctx, &params)
     }
 
+    pub fn withdraw_yield(
+        mut ctx: Context<YieldWithdrawYield>,
+        params: WithdrawYieldParams,
+    ) -> Result<()> {
+        YieldWithdrawYield::apply(&mut ctx, &params)
+    }
+
     pub fn rebalance_position(
         mut ctx: Context<YieldRebalancePosition>,
         params: RebalancePositionParams,
@@ -122,10 +130,6 @@ pub mod my_oapp {
         YieldEmergencyPause::apply(&mut ctx, &params)
     }
 
-    pub fn get_optimal_strategy(
-        ctx: Context<YieldGetOptimalStrategy>,
-        params: GetOptimalStrategyParams,
-    ) -> Result<OptimalStrategyResponse> {
-        YieldGetOptimalStrategy::apply(&ctx, &params)
-    }
+    // Remove the problematic get_optimal_strategy function for now
+    // It can be reimplemented as a view function or handled differently
 }
