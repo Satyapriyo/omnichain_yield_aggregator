@@ -89,3 +89,12 @@ pub struct EmergencyPauseDeactivated {
     pub admin: Pubkey,
     pub timestamp: i64,
 }
+
+#[event]
+pub struct OptimalStrategyRequested {
+    pub user: Pubkey,
+    pub amount: u64,
+    pub risk_tolerance: u8,
+    pub min_apy: u64,
+    pub timestamp: i64,
+}
